@@ -22,7 +22,7 @@ import { useControllerTick } from './ui';
 // the right-click scala/angle/deactivate menu, Reset and Re-segment — is disabled, exactly as
 // electrode_panel._edits_locked does.
 
-type Tab = 'curves' | 'mip' | 'mismatch' | 'anglefreq' | 'distangle';
+export type Tab = 'curves' | 'mip' | 'mismatch' | 'anglefreq' | 'distangle';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'curves', label: 'Curves' },
@@ -36,13 +36,22 @@ export function ElectrodeDock({
   controller,
   cdbId,
   electrodes,
+  tab: tabProp,
+  onTab,
 }: {
   controller: ViewerController;
   cdbId: string;
   electrodes: CdbElectrodes;
+  /** Which tab is in front, when something outside drives it — a takeover panel putting the
+   *  MIP up, as the desktop's _open_electrode_panel(ctx, mip=True) does. Omit both props and
+   *  the dock owns its own tab, which is what every ordinary use wants. */
+  tab?: Tab;
+  onTab?: (t: Tab) => void;
 }) {
   useControllerTick(controller);
-  const [tab, setTab] = useState<Tab>('curves');
+  const [ownTab, setOwnTab] = useState<Tab>('curves');
+  const tab = tabProp ?? ownTab;
+  const setTab = (t: Tab) => (onTab ? onTab(t) : setOwnTab(t));
   const [setting, setSetting] = useState(electrodes.cur_setting);
   const [graph, setGraph] = useState<GraphSeries | null>(null);
   const [scrub, setScrub] = useState(0); // 0..1000 over the centerline angles

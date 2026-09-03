@@ -35,6 +35,9 @@ export function Display({ controller }: { controller: ViewerController }) {
 
   const images = controller.scene.images;
   const byId = (id: string) => images.find((im) => im.id === id) ?? null;
+  // A takeover panel drives which images are shown (the desktop's set_slots_enabled(False)),
+  // so the slot selects are frozen while one is open.
+  const slotsLocked = controller.viewLocked;
   const hasBottom = controller.scene.bottom !== null;
   // The image the per-image controls (interpolation / colormap / contrast) act on.
   const target =
@@ -60,7 +63,7 @@ export function Display({ controller }: { controller: ViewerController }) {
         <select
           style={sel}
           value={controller.scene.top?.id ?? ''}
-          disabled={!images.length}
+          disabled={!images.length || slotsLocked}
           onChange={(e) => {
             const im = byId(e.target.value);
             if (im) controller.selectTop(im);
@@ -82,7 +85,7 @@ export function Display({ controller }: { controller: ViewerController }) {
         <select
           style={sel}
           value={controller.scene.bottom?.id ?? ''}
-          disabled={!images.length}
+          disabled={!images.length || slotsLocked}
           onChange={(e) => controller.selectBottom(byId(e.target.value))}
         >
           <option value="">(none)</option>

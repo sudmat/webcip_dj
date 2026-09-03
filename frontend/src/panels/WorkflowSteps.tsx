@@ -6,7 +6,8 @@ import { MenuButton, type MenuItem } from './MenuButton';
 // is_available holds, which the backend computes and ships in `workflow.available` — so the rule
 // lives in one place instead of being restated here.
 //
-// Step 7 (Save file) is out of scope for now.
+// Step 7 (Save file) carries only its review action — "Validate plan …", which opens the
+// takeover panel; saving and DB submission need a plan-write path the web does not have.
 
 export interface StepDef {
   key: string;

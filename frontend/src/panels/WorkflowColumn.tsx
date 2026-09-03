@@ -13,6 +13,7 @@ export function WorkflowColumn({
   workflow,
   steps,
   onTakeOver,
+  takeover,
 }: {
   controller: ViewerController;
   /** The session state behind the banner; null until the first fetch. */
@@ -21,6 +22,11 @@ export function WorkflowColumn({
   steps?: React.ReactNode;
   /** Claim the shared workspace from whoever holds it. */
   onTakeOver?: () => void;
+  /** A panel that owns the column while it runs (validation, adjust-seg, seed picking …) —
+   *  the desktop's WorkflowHost.enter_exclusive, which hides the step list and the
+   *  Save/Continue/Back buttons and mounts the panel under the banner. The banner stays,
+   *  as it does there (its refresh() only updates the banner while exclusive). */
+  takeover?: React.ReactNode;
 }) {
   useControllerTick(controller);
   // The banner follows the live SESSION when there is one, and falls back to the opened plan's
@@ -53,9 +59,13 @@ export function WorkflowColumn({
           onTakeOver={onTakeOver}
         />
       )}
-      {steps}
-      <Structures controller={controller} />
-      <ElectrodeTable controller={controller} />
+      {takeover ?? (
+        <>
+          {steps}
+          <Structures controller={controller} />
+          <ElectrodeTable controller={controller} />
+        </>
+      )}
     </div>
   );
 }

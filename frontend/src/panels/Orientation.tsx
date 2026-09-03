@@ -11,6 +11,9 @@ import { Group, useControllerTick } from './ui';
 export function Orientation({ controller }: { controller: ViewerController }) {
   useControllerTick(controller);
   const mode = controller.orientationMode;
+  // A takeover panel drives the frame itself (the desktop greys this the same way, via
+  // display_panel.set_orientation_enabled(False)).
+  const locked = controller.viewLocked;
   const opt = (id: string, label: string, disabled = false, onPick?: () => void) => (
     <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, opacity: disabled ? 0.5 : 1 }}>
       <input
@@ -26,8 +29,8 @@ export function Orientation({ controller }: { controller: ViewerController }) {
   return (
     <Group title="Orientation">
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        {opt('primary', 'Primary', false, () => controller.setOrientationMode('primary'))}
-        {opt('original', 'Original', false, () => controller.setOrientationMode('original'))}
+        {opt('primary', 'Primary', locked, () => controller.setOrientationMode('primary'))}
+        {opt('original', 'Original', locked, () => controller.setOrientationMode('original'))}
         {opt('acpc', 'AC/PC', true)}
         {opt('traj', 'Trajectory', true)}
       </div>

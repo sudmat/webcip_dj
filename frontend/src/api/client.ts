@@ -364,6 +364,12 @@ export interface PlanView {
   blend_alpha: number;
   fov_mm: number;
   radiological: boolean;
+  /** The desktop's one-shot auto-zoom, {kind: zoom} — armed when a plan loads and consumed by
+   *  the first mesh / electrode click (four_up_viewer._consume_default_zoom). Sent by the
+   *  backend and deliberately IGNORED here: the web frames from the call site instead
+   *  (ViewerController.centerOn takes an explicit zoom), so there is no click-triggered state
+   *  to keep. Typed so the field is a documented no-op rather than a silent drop. */
+  default_zoom?: Record<string, number> | null;
 }
 
 /** Saved shell/panel state (the workspace 'ui' block; desktop main.py owns its shape). */

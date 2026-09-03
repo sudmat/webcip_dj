@@ -33,8 +33,9 @@ import {
 import { Image } from '../core/image';
 import { makePlanStructure, makeTrajMesh, type Structure } from '../core/structure';
 import { planStructures, planTrajectories } from '../core/planObjects';
-import { ElectrodeDock } from '../panels/ElectrodeDock';
+import { ElectrodeDock, type Tab as ElectrodeTab } from '../panels/ElectrodeDock';
 import { AutoProcessDialog } from '../panels/AutoProcessDialog';
+import { ValidationPanel } from '../panels/ValidationPanel';
 import { FourUp } from '../render/FourUp';
 import { ViewerController } from '../render/viewerController';
 import { RightDock } from '../panels/RightDock';
@@ -57,6 +58,8 @@ const volumeCache = new Map<string, NumericArray>();
 
 export function ProcessingApp() {
   const [autoOpen, setAutoOpen] = useState(false);
+  // Which takeover panel owns the left column, or null (the desktop's exclusive panel).
+  const [takeover, setTakeover] = useState<'validate' | null>(null);
   // Which picker is open: the four things step 1 can load, or null.
   // The explorer's jobs: a pipeline run (a folder), and loading anything already ON the
   // server — which skips the upload entirely, worth ~3 s on a 400 MB CT plus the browser
@@ -143,6 +146,14 @@ export function ProcessingApp() {
     }
   };
   useEffect(() => void refreshWorkflow(), []);
+
+  // A takeover panel is a human reading the screen for minutes with no HTTP traffic, and the
+  // workspace hold lapses after 3 minutes idle (backend/workflow.py HOLD_IDLE_SECONDS) — which
+  // would let another session claim it mid-review. GET /workflow touches the hold, so the
+  // scope's heartbeat keeps it alive by refreshing the banner we already show.
+  useEffect(() => {
+    controller.onScopeHeartbeat = () => void refreshWorkflow();
+  }, [controller]);
 
   // The electrode models behind step 6's 'Electrode type ▶' (the desktop's _all_electrode_options).
   const [electrodeOptions, setElectrodeOptions] = useState<ElectrodeOption[]>([]);
@@ -636,10 +647,35 @@ export function ProcessingApp() {
     ],
   };
 
+  // --- step 7: save file (_SaveStep) ---
+  // Only the review action is live; the desktop's save/submit need a plan-write path the web
+  // does not have yet. `gate: 'load'` keeps the step lit whenever a workspace exists, as the
+  // desktop's Save-file menu is.
+  // Read from the SCENE, not from `workflow`: a .cdb or plan opened for review is loaded
+  // without creating a backend session, and it is exactly the case worth validating.
+  const hasImages = controller.scene.images.length > 0;
+  const step7: StepDef = {
+    key: 'save',
+    gate: 'load',
+    title: 'Save file',
+    items: [
+      {
+        label: 'Validate plan …',
+        disabled: !hasImages,
+        title: hasImages
+          ? 'Review the segmentation, the registration and the electrodes'
+          : 'Load a preop CT first',
+        onClick: () => setTakeover('validate'),
+      },
+      { label: 'Save plan …', separatorBefore: true, disabled: true, title: 'Plan saving — not implemented yet' },
+      { label: 'Submit plan …', disabled: true, title: 'DB submission — not implemented yet' },
+    ],
+  };
+
   const stepColumn = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 }}>
       <WorkflowSteps
-        steps={[step1, step2, step3, step4, step5, step6]}
+        steps={[step1, step2, step3, step4, step5, step6, step7]}
         workflow={workflow}
         running={runningStep}
         failed={failedStep}
@@ -725,6 +761,11 @@ export function ProcessingApp() {
             workflow={workflow}
             steps={stepColumn}
             onTakeOver={() => void takeOver()}
+            takeover={
+              takeover === 'validate' ? (
+                <ValidationPanel controller={controller} onExit={() => setTakeover(null)} />
+              ) : undefined
+            }
           />
         ),
       }}
@@ -739,6 +780,10 @@ export function ProcessingApp() {
                   controller={controller}
                   cdbId={controller.cdbId!}
                   electrodes={controller.electrodes}
+                  // A takeover panel puts its own tab in front (validation step 3 wants the
+                  // MIP); with no scope open both props are undefined and the dock owns its tab.
+                  tab={(controller.scope?.dockTab as ElectrodeTab | undefined) ?? undefined}
+                  onTab={(t) => controller.setDockTab(t)}
                 />
               ),
               onClose: () => controller.setElectrodePanel(false),
@@ -800,7 +845,10 @@ export function ProcessingApp() {
           onProgressResult={(result) => void showResult(result)}
           onCompleted={(result) => {
             setAutoOpen(false);
-            void showResult(result);
+            // The desktop enters validation straight off a clean run (auto_process.py:
+            // `if dlg.completed: ctx.validate_plan()`). The result has to land FIRST, or the
+            // panel would frame views that are about to be replaced.
+            void showResult(result).then(() => setTakeover('validate'));
           }}
         />
       )}

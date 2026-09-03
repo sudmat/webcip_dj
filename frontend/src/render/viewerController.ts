@@ -23,6 +23,8 @@ import {
   type PlanTrajectory,
 } from '../core/planObjects';
 import type { CdbData } from '../api/client';
+import { meshCentroid, parallelScaleFor } from '../core/viewFit';
+import { ViewScope, type ScopeName } from './viewScope';
 
 /** How the plan's structure meshes appear on the 2D slices (desktop Display panel's
  *  "2D meshes", four_up_viewer.set_contour_mode). */
@@ -52,7 +54,10 @@ export class ViewerController {
   // Display-panel state a plan restores (workspace ui.display), held here so the panel is a
   // pure view of it and a load can drive it.
   referenceLine = false;
-  projection3d: 'parallel' | 'perspective' = 'perspective';
+  /** Parallel matches the desktop's global default (four_up_viewer.py: _projection3d =
+   *  "parallel"), and it is what makes apply3dZoom visible: the 2D<->3D scale match runs
+   *  through the camera's parallel scale, which perspective ignores. */
+  projection3d: 'parallel' | 'perspective' = 'parallel';
   mode3d: Mode3D = 'surface';
 
   // --- loaded postop .cdb ---------------------------------------------------------------
@@ -63,6 +68,12 @@ export class ViewerController {
   /** The electrode NUMBER selected across the table, the Curves graph and the MIP — the desktop's
    *  electrode-selection bus (appcontext.select_electrode / on_electrode_selected). */
   selectedElectrode: number | null = null;
+
+  // --- takeover panel (desktop enter_exclusive_panel) -----------------------------------
+  /** The panel currently owning the views, or null. See render/viewScope.ts. */
+  scope: ViewScope | null = null;
+  /** Called on the scope's heartbeat to keep the workspace hold alive; the workspace sets it. */
+  onScopeHeartbeat: (() => void) | null = null;
 
   get image(): Image | null {
     return this.scene.top; // panels read the top slot
@@ -79,6 +90,9 @@ export class ViewerController {
       p.onRegChange = () => this.emit();
       p.onFgPreview = (on: boolean) => this.setFgPreview(on);
     });
+    // A fresh View3D's camera is perspective (the vtk.js default), so the projection has to be
+    // pushed or the field and the camera disagree until someone touches the Display select.
+    view3d.setProjection(this.projection3d);
     this.syncSlots();
     if (this.structures.length) {
       view3d.setStructures(this.structures);
@@ -206,6 +220,85 @@ export class ViewerController {
     this.refresh();
   }
 
+  // --- framing (four_up_viewer's move_crosshair_to / center_on / _apply_3d_zoom) ------------
+  //
+  // A 2D pane shows fovMm/zoom mm of vertical field, so "frame this" = pick a zoom (core/viewFit)
+  // and put the crosshair at the target. `moveCrosshairTo` is the 2D half and `centerOn` adds the
+  // 3D camera; both are named after their desktop counterparts.
+
+  /** Crosshair + every pane re-centred on it, in one refresh (move_crosshair_to).
+   *
+   *  The difference from `moveCrosshair` is the pan: a drag inside a pane moves the crosshair
+   *  only, while a list click / a "Go" / a fit also brings the panes to it. */
+  moveCrosshairTo(world: Vec3): void {
+    this.scene.setCrosshair(world);
+    this.recenterAll();
+  }
+
+  /** The shared 2D zoom (pv_core ViewState.zoom). */
+  setZoom(zoom: number): void {
+    this.scene.view.zoom = zoom;
+    this.refresh();
+  }
+
+  /** Match the 3D camera's scale to a 2D zoom, so both views show the same physical extent
+   *  (_apply_3d_zoom). Only visible in parallel projection — see View3D.setParallelScale. */
+  apply3dZoom(zoom: number): void {
+    this.view3d?.setParallelScale(parallelScaleFor(this.scene.view.fovMm, zoom));
+  }
+
+  /** Slide the 3D camera onto the crosshair (_pivot_and_center_3d_at_crosshair). The desktop
+   *  maps through world_to_scene(top) here; the web's 3D pane is already global world. */
+  pivotAndCenter3dAtCrosshair(): void {
+    this.view3d?.centerOn(this.scene.view.crosshair as Vec3);
+  }
+
+  /** Centre 2D and 3D on a world point, optionally zooming both to frame it (center_on).
+   *
+   *  `zoom` is explicit rather than the desktop's one-shot `view.default_zoom[kind]` dict: that
+   *  state exists only because a CLICK is the trigger there and the "first click frames it"
+   *  rule needs somewhere to live. Callers here say what they want. */
+  centerOn(point: Vec3, zoom?: number): void {
+    if (zoom !== undefined) this.scene.view.zoom = zoom;
+    this.moveCrosshairTo(point);
+    this.pivotAndCenter3dAtCrosshair();
+    if (zoom !== undefined) this.apply3dZoom(zoom);
+  }
+
+  // --- takeover panels (enter_exclusive_panel / exit_exclusive_panel) ------------------------
+
+  /** Hand the views to a takeover panel: snapshot everything and stop anything auto-framing.
+   *  The panel then uses ordinary setters and saves nothing — exitScope puts it all back. */
+  enterScope(name: ScopeName): ViewScope {
+    this.scope?.exit(); // a second panel replacing the first still restores the original state
+    const scope = new ViewScope(name, this, this.onScopeHeartbeat);
+    this.scope = scope;
+    scope.enter();
+    this.emit();
+    return scope;
+  }
+
+  exitScope(): void {
+    const scope = this.scope;
+    if (!scope) return;
+    this.scope = null; // cleared FIRST, so exit()'s own setters are not treated as panel edits
+    scope.exit();
+    this.emit();
+  }
+
+  /** A takeover panel owns the views, so the controls that would fight it are disabled
+   *  (the desktop's set_orientation_enabled(False) + set_slots_enabled(False)). */
+  get viewLocked(): boolean {
+    return this.scope !== null;
+  }
+
+  /** Which bottom-dock tab the open panel wants in front (ElectrodeDock follows it). */
+  setDockTab(tab: string | null): void {
+    if (!this.scope) return;
+    this.scope.dockTab = tab;
+    this.emit();
+  }
+
   setSliceStep(mm: number): void {
     this.scene.view.sliceStep = mm;
     this.emit();
@@ -287,6 +380,9 @@ export class ViewerController {
       patch = { ...patch, visible2d: patch.visible };
     }
     Object.assign(s, patch);
+    // While a takeover panel owns the views, remember its choice so a structure-list rebuild
+    // (a pipeline revision) can re-apply it instead of reverting to the plan's own flag.
+    if (this.scope && patch.visible !== undefined) this.scope.noteVisibility(id, patch.visible);
     this.view3d?.syncStructureProps();
     this.panes.forEach((p) => p.update());
     this.emit();
@@ -355,22 +451,14 @@ export class ViewerController {
     this.electrodes = electrodes;
     this.selectedElectrode = null;
     this.activeTrajId = null;
-    // A cdb's crop is a few cm across; the 256 mm default FOV would show a speck.
-    const top = this.scene.top;
-    if (top) {
-      this.scene.view.fovMm = Math.max(...top.size.map((s, i) => s * top.spacing[i])) * 1.15;
-      // Centre of the CROP, expressed in FULL-grid indices — pixelToWorld works in the full frame
-      // for a cropped image, so the crop's centre is cropOrigin + (size-1)/2, not (size-1)/2.
-      this.scene.setCrosshair(
-        top.pixelToWorld([
-          top.cropOrigin[0] + (top.size[0] - 1) / 2,
-          top.cropOrigin[1] + (top.size[1] - 1) / 2,
-          top.cropOrigin[2] + (top.size[2] - 1) / 2,
-        ]),
-      );
-    }
+    // A takeover panel has framed the views on what the human is judging, and a pipeline result
+    // lands here on EVERY revision of a run — so re-framing would undo the panel's fit mid-review.
+    if (!this.scope?.freezeFraming) this.frameForCdb();
     this.syncSlots();
     this.structures = structures;
+    // makePlanStructure re-derives `visible` from the plan object, so a panel that hid
+    // structures would silently see them all come back on the next revision.
+    this.scope?.reapplyOverrides(structures);
     this.view3d?.setStructures(structures);
     this.pushStructuresTo2d();
     // Push the current 2D-mesh mode to the panes. Without this the panes keep the controller's
@@ -378,9 +466,29 @@ export class ViewerController {
     // "2D meshes" selector reads "Contour" — the control and the picture disagree. A plan gets the
     // same push from applyPlanUi's saved ui.display.mesh_mode.
     this.setMeshMode2d(this.meshMode2d);
-    this.set3dMode('none'); // 3D shows the meshes + electrodes, not the CT
-    this.recenterAll();
+    if (!this.scope?.freezeFraming) {
+      this.set3dMode('none'); // 3D shows the meshes + electrodes, not the CT
+      this.recenterAll();
+    }
     this.syncPlan();
+  }
+
+  /** How a freshly opened .cdb is framed: field of view and crosshair onto the crop.
+   *  Skipped while a takeover panel owns the views — see the call site in loadCdb. */
+  private frameForCdb(): void {
+    // A cdb's crop is a few cm across; the 256 mm default FOV would show a speck.
+    const top = this.scene.top;
+    if (!top) return;
+    this.scene.view.fovMm = Math.max(...top.size.map((s, i) => s * top.spacing[i])) * 1.15;
+    // Centre of the CROP, expressed in FULL-grid indices — pixelToWorld works in the full frame
+    // for a cropped image, so the crop's centre is cropOrigin + (size-1)/2, not (size-1)/2.
+    this.scene.setCrosshair(
+      top.pixelToWorld([
+        top.cropOrigin[0] + (top.size[0] - 1) / 2,
+        top.cropOrigin[1] + (top.size[1] - 1) / 2,
+        top.cropOrigin[2] + (top.size[2] - 1) / 2,
+      ]),
+    );
   }
 
   get readOnly(): boolean {
@@ -393,14 +501,15 @@ export class ViewerController {
   }
 
   /** Select an electrode by NUMBER, from the table / Curves graph / MIP. A selection also centres
-   *  the views on that contact, as the desktop's select_electrode does. */
-  selectElectrode(label: number | null): void {
+   *  the views on that contact, as the desktop's select_electrode does.
+   *
+   *  `zoom` frames the contact as well (the desktop's one-shot default_zoom['electrode'] = 20).
+   *  Omitted, the zoom is left alone — which is what a table or chart click wants, so browsing
+   *  the list doesn't keep slamming the zoom. */
+  selectElectrode(label: number | null, zoom?: number): void {
     this.selectedElectrode = label;
     const c = this.contacts().find((x) => Number(x.label) === label);
-    if (c?.position) {
-      this.scene.setCrosshair(c.position as Vec3);
-      this.recenterAll();
-    }
+    if (c?.position) this.centerOn(c.position as Vec3, zoom);
     this.syncPlan();
   }
 
@@ -476,10 +585,7 @@ export class ViewerController {
     const active = this.activeTrajectory();
     if (active) {
       const c = trajCenter(active);
-      if (c) {
-        this.scene.setCrosshair(c);
-        this.recenterAll();
-      }
+      if (c) this.moveCrosshairTo(c);
     }
     this.syncPlan();
   }
@@ -522,23 +628,12 @@ export class ViewerController {
     this.refresh();
   }
 
-  /** Crosshair to a structure's mesh centroid, everything re-centred on it
-   *  (four_up_viewer.focus_structure — the checklist's click-to-focus). */
-  focusStructure(id: string): void {
-    const s = this.structures.find((x) => x.id === id);
-    const pts = s?.mesh.points;
-    if (!pts || !pts.length) return;
-    let x = 0;
-    let y = 0;
-    let z = 0;
-    const n = pts.length / 3;
-    for (let i = 0; i < pts.length; i += 3) {
-      x += pts[i];
-      y += pts[i + 1];
-      z += pts[i + 2];
-    }
-    this.scene.setCrosshair([x / n, y / n, z / n]);
-    this.recenterAll();
+  /** Centre on a structure's mesh centroid (four_up_viewer.focus_structure — the checklist's
+   *  click-to-focus). `zoom` frames it too, as the desktop's one-shot default_zoom['mesh'] = 10
+   *  does on the first click and its post-segmentation modiolus focus does with zoom=5. */
+  focusStructure(id: string, zoom?: number): void {
+    const c = meshCentroid(this.structures.find((x) => x.id === id)?.mesh.points);
+    if (c) this.centerOn(c, zoom);
   }
 
   /** The scala-tympani A/B width segments, in world (structure extra.ab pa/pb). */

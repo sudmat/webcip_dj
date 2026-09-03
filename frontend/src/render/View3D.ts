@@ -89,6 +89,14 @@ export class View3D {
   private structures: Structure[] = [];
   private structActors = new Map<string, { actor: vtkActor; mapper: ReturnType<typeof vtkMapper.newInstance> }>();
   displayView = false; // result-display: frame structures with the v2 initial camera
+  /** Whether an image / structure / surface arriving may re-frame the camera.
+   *
+   *  Cleared while a takeover panel owns the view (render/viewScope.ts), because those
+   *  re-frames are not one-time: setStructures runs on EVERY structure-list change, and a
+   *  pipeline step's result lands as a fresh list, so a panel's framing would be undone by the
+   *  next revision. It also protects a plan's restored ui.camera3d from the async surface load
+   *  below, which lands after applyPlanUi has already set the camera. */
+  autoFrame = true;
   private selector = vtkOpenGLHardwareSelector.newInstance({
     captureZValues: true,
     fieldAssociation: FieldAssociations.FIELD_ASSOCIATION_POINTS,
@@ -166,7 +174,7 @@ export class View3D {
 
     this.applyMode();
     this.setupOrientationMarker();
-    this.renderer.resetCamera();
+    if (this.autoFrame) this.renderer.resetCamera();
     this.update();
   }
 
@@ -201,7 +209,7 @@ export class View3D {
       }
     }
     this.syncStructureProps();
-    this.frameStructures();
+    if (this.autoFrame) this.frameStructures();
     this.renderWin();
   }
 
@@ -300,6 +308,53 @@ export class View3D {
     this.update();
   }
 
+  /** The camera's parallel scale — the viewport half-height in mm. Use viewFit's
+   *  parallelScaleFor to match a 2D pane's zoom (four_up_viewer._apply_3d_zoom).
+   *
+   *  No visible effect in perspective projection: vtk stores the value and it materializes on
+   *  the next switch to parallel. */
+  setParallelScale(scale: number): void {
+    this.renderer.getActiveCamera().setParallelScale(scale);
+    this.renderer.resetCameraClippingRange();
+    this.renderWin();
+  }
+
+  /** Slide the camera so `world` is at the centre of the view, keeping the direction and the
+   *  distance (four_up_viewer._center_3d_on: focal point and position get the same delta).
+   *
+   *  This also moves the orbit pivot, since onPointerMove rotates with azimuth/elevation —
+   *  which turn about the focal point. That is the desktop's _style3d._pivot, for free. */
+  centerOn(world: Vec3): void {
+    const cam = this.renderer.getActiveCamera();
+    const fp = cam.getFocalPoint();
+    const pos = cam.getPosition();
+    const d = [world[0] - fp[0], world[1] - fp[1], world[2] - fp[2]];
+    cam.setFocalPoint(fp[0] + d[0], fp[1] + d[1], fp[2] + d[2]);
+    cam.setPosition(pos[0] + d[0], pos[1] + d[1], pos[2] + d[2]);
+    this.renderer.resetCameraClippingRange();
+    this.renderWin();
+  }
+
+  /** The full camera, for a takeover panel to snapshot and put back (render/viewScope.ts). */
+  cameraState(): { position: Vec3; focal: Vec3; viewUp: Vec3; parallelScale: number } {
+    const cam = this.renderer.getActiveCamera();
+    return {
+      position: [...cam.getPosition()] as Vec3,
+      focal: [...cam.getFocalPoint()] as Vec3,
+      viewUp: [...cam.getViewUp()] as Vec3,
+      parallelScale: cam.getParallelScale(),
+    };
+  }
+
+  setCameraState(s: { position: Vec3; focal: Vec3; viewUp: Vec3; parallelScale: number }): void {
+    this.setCamera({
+      position: s.position,
+      focal: s.focal,
+      view_up: s.viewUp,
+      parallel_scale: s.parallelScale,
+    });
+  }
+
   private applyMode(): void {
     this.renderer.removeVolume(this.volume);
     this.renderer.removeActor(this.surfaceActor);
@@ -332,8 +387,10 @@ export class View3D {
       this.surfaceBuilt = true;
       if (this.mode === 'surface') {
         this.renderer.addActor(this.surfaceActor);
-        // The mesh arrived after setImage's resetCamera (async), so frame it now that it exists.
-        this.renderer.resetCamera();
+        // The mesh arrived after setImage's resetCamera (async), so frame it now that it exists
+        // — unless someone has set the camera deliberately in the meantime (a plan's saved
+        // ui.camera3d, or a takeover panel's fit), which this would otherwise discard.
+        if (this.autoFrame) this.renderer.resetCamera();
         this.renderWin();
       }
     } finally {
