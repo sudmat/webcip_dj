@@ -1,0 +1,20 @@
+# Direct dependencies of the backend. For a deployment install requirements.lock.txt instead —
+# it pins the exact set this has been run against (see deploy/SERVER_SETUP.md).
+#
+# pv_core and projects.cip are NOT installed: they are imported from the pypv checkout that
+# WEBCIP_SRC points at (backend/pvcore_path.py). Their own dependencies are the reason this list
+# is longer than a web backend's usually is.
+
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2
+python-multipart>=0.0.9   # POST /upload takes UploadFile/Form; FastAPI raises at import without it
+
+# pv_core / projects.cip
+numpy>=2,<3
+SimpleITK>=2.5            # image decode
+vtk>=9.6                  # meshing (backend/routes/surface.py builds isosurfaces server-side)
+PySide6>=6.11             # projects.cip imports QtCore/QtWidgets at module level; run headless
+                          # with QT_QPA_PLATFORM=offscreen — no QApplication is ever constructed
+pydicom>=3
+cryptography>=42          # pv_core.license, imported transitively

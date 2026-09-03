@@ -1,0 +1,8 @@
+{
+  "name": "Facial Nerve",
+  "material": {"color":"rgb(255, 0, 255)","emissive":0,"specular":3355443,"shininess":0,"opacity":0.5,"transparent":true,"depthFunc":3,"depthTest":true,"depthWrite":true,
+  "flatShading": true, "clipShadows": true
+  },
+  "renderOrder": 4
+}
+

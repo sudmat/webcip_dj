@@ -1,0 +1,8 @@
+{
+  "name": "Promontory",
+  "material": {"color":"rgb(241,214,145)","emissive":0,"specular":3355443,"shininess":0,"transparent":true,"depthFunc":3,"depthTest":true,"depthWrite":true,
+    "flatShading": true, "clipShadows": true,
+    "opacity": 0.5
+  },
+  "renderOrder": 5
+}

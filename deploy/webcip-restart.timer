@@ -1,0 +1,15 @@
+[Unit]
+Description=Nightly WebCIP restart (reclaims the image cache)
+
+# backend/store.py::_STORE holds every decoded CT for the life of the process and never evicts
+# — ~350 MB each. A day of loading cases will exhaust RAM. This is the blunt day-one mitigation;
+# it is correct only because nothing is persisted, so a restart loses nothing that survives one
+# anyway. Retire it when _STORE gets a byte budget (see the plan's deferred section).
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=false
+Unit=webcip-restart.service
+
+[Install]
+WantedBy=timers.target

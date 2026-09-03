@@ -1,0 +1,8 @@
+{
+  "name": "Chorda Tympani",
+  "material": {"color":"rgb(0, 255, 0)","emissive":0,"specular":3355443,"shininess":0,"opacity":0.5,"transparent":true,"depthFunc":3,"depthTest":true,"depthWrite":true,
+  "flatShading": true, "clipShadows": true
+  },
+  "renderOrder": 4
+}
+

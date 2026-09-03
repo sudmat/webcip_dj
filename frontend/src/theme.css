@@ -1,0 +1,118 @@
+/* Theme tokens. Every colour the app chrome uses comes from here; a theme is a complete set of
+   these variables. `data-theme` on <html> selects one (core/theme.ts) — :root carries Charcoal so
+   the app still renders correctly before the attribute is applied.
+
+   Token roles
+     --bg            page background                 --text          primary text
+     --panel         dock / panel surface            --muted         secondary text (labels)
+     --panel-alt     raised surface (nav, menus)     --faint         disabled / tertiary text
+     --panel-border  borders and dividers            --accent        selection, primary action
+     --sunken        inset surface (lists, inputs)   --accent-text   text drawn on --accent
+     --control-bg    button face                     --ok/--warn/--err/--info  status text
+     --control-hover button hover, active tab        --warn-bg/--warn-border   callout box
+
+   --muted is the workhorse (panel labels, field names, headers). Keep it at >= 7:1 against
+   --panel: at 13px the old #9a9a9a on #2a2a2a read as noise. */
+
+/* Type scale — shared by every theme. --fs-base is the single knob: raising it moves the whole
+   UI up a size, because the other steps are offsets from it and everything else inherits.
+   Chart and PDF-report typography is deliberately NOT on this scale (see charts/). */
+:root {
+  --fs-base: 13.5px;
+  --fs-lg: calc(var(--fs-base) + 1px);
+  --fs-sm: calc(var(--fs-base) - 1px);
+  --fs-xs: calc(var(--fs-base) - 2px);
+  --fs-2xs: calc(var(--fs-base) - 3px);
+}
+
+:root,
+:root[data-theme='charcoal'] {
+  color-scheme: dark;
+  --bg: #1a1a1a;
+  --panel: #242424;
+  --panel-alt: #2c2c2c;
+  --panel-border: #3f3f3f;
+  --sunken: #141414;
+  --text: #f0f0f0;
+  --muted: #bcbcbc;
+  --faint: #8c8c8c;
+  --accent: #3a72e0;
+  --accent-text: #ffffff;
+  --control-bg: #363636;
+  --control-hover: #454545;
+  --ok: #5fd06a;
+  --warn: #ffbf5c;
+  --err: #ff8080;
+  --info: #79b0ff;
+  --warn-bg: #3a2f1c;
+  --warn-border: #7d6636;
+}
+
+/* Near-black with the highest text contrast of the set — for bright rooms and projectors. */
+:root[data-theme='carbon'] {
+  color-scheme: dark;
+  --bg: #0a0a0a;
+  --panel: #151515;
+  --panel-alt: #1e1e1e;
+  --panel-border: #3a3a3a;
+  --sunken: #000000;
+  --text: #ffffff;
+  --muted: #d2d2d2;
+  --faint: #9a9a9a;
+  --accent: #4d9dff;
+  --accent-text: #04121f;
+  --control-bg: #2b2b2b;
+  --control-hover: #3c3c3c;
+  --ok: #6ee07a;
+  --warn: #ffc773;
+  --err: #ff9090;
+  --info: #8cc0ff;
+  --warn-bg: #33290f;
+  --warn-border: #7a672f;
+}
+
+/* Cool blue-black. Sits closest to the chart palette the report views already use. */
+:root[data-theme='midnight'] {
+  color-scheme: dark;
+  --bg: #0d1421;
+  --panel: #162030;
+  --panel-alt: #1c2839;
+  --panel-border: #33445c;
+  --sunken: #0a111c;
+  --text: #eef3fa;
+  --muted: #b3c4dc;
+  --faint: #7f92ac;
+  --accent: #3a72e0;
+  --accent-text: #ffffff;
+  --control-bg: #26344a;
+  --control-hover: #33455f;
+  --ok: #56d18a;
+  --warn: #ffc266;
+  --err: #ff8a8a;
+  --info: #7db4ff;
+  --warn-bg: #33291a;
+  --warn-border: #7a6437;
+}
+
+/* Warm dark — a low-blue neutral for long sessions; amber accent. */
+:root[data-theme='mocha'] {
+  color-scheme: dark;
+  --bg: #1a1614;
+  --panel: #241f1c;
+  --panel-alt: #2d2724;
+  --panel-border: #453d38;
+  --sunken: #131010;
+  --text: #f5efe9;
+  --muted: #c8b9ac;
+  --faint: #94867b;
+  --accent: #e08b3c;
+  --accent-text: #1a1210;
+  --control-bg: #383029;
+  --control-hover: #483e36;
+  --ok: #7fc96a;
+  --warn: #ffc46b;
+  --err: #f08a72;
+  --info: #8fb8e8;
+  --warn-bg: #3a2c18;
+  --warn-border: #7d6535;
+}

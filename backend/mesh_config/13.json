@@ -1,0 +1,9 @@
+{
+  "name": "Implant Electrodes",
+  "material": {"color":16711680,"emissive":0,"specular":3355443,"shininess":100,"transparent":true,"depthFunc":3,"depthTest":true,"depthWrite":true,
+    "flatShading": true, "clipShadows": true,
+    "side": 2
+  },
+  "renderOrder": 2
+}
+

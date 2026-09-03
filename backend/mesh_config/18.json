@@ -1,0 +1,8 @@
+{
+  "name": "Modiolus",
+  "material": {"color":16766720,"emissive":0,"specular":3355443,"shininess":0,"transparent":true,"depthFunc":3,"depthTest":true,"depthWrite":true,
+    "flatShading": true, "clipShadows": true
+  },
+  "renderOrder": 3
+}
+

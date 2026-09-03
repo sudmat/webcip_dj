@@ -1,0 +1,8 @@
+{
+  "name": "Cochlea",
+  "material": {"color":16119260,"emissive":0,"specular":3355443,"shininess":0,"opacity":0.3,"transparent":true,"depthFunc":3,"depthTest":true,"depthWrite":true,
+    "flatShading": true, "clipShadows": true
+  },
+  "renderOrder": 5
+}
+

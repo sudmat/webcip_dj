@@ -1,0 +1,25 @@
+# Build output and dependencies — rebuilt on the server by deploy/deploy.sh.
+node_modules/
+frontend/dist/
+.venv/
+
+# Patient scans and tool artifacts. These must never enter history: a single CT is ~350 MB and
+# git cannot forget it afterwards.
+uploads/
+*.nii
+*.nii.gz
+*.nrrd
+*.mha
+*.mhd
+*.dcm
+*.pwi
+*.pws
+*.cdb
+
+__pycache__/
+*.py[cod]
+
+# Editor / machine-local
+.vscode/
+.claude/settings.local.json
+temp.py

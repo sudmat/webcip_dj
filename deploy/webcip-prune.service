@@ -1,0 +1,14 @@
+[Unit]
+Description=Remove old WebCIP tool-run directories
+
+[Service]
+Type=oneshot
+# Runs as root ON PURPOSE. The tool containers write their output as root, so the backend's own
+# pv_core.tools.jobs.prune() cannot remove those subtrees — on the dev box it freed 5.3 GB but
+# left four directories behind, each holding a root-owned cip_preseg/. This sweeps the remainder.
+User=root
+# -mtime +7 also protects the run in progress: a live session's directory is written continuously.
+ExecStart=/usr/bin/find /opt/pypv/jobs/cip -mindepth 1 -maxdepth 1 -type d -mtime +7 -exec rm -rf {} +
+
+[Install]
+WantedBy=multi-user.target

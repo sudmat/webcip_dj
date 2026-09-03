@@ -1,0 +1,8 @@
+{
+  "name": "Round-window",
+  "material": {"color":16711680,"emissive":0,"specular":3355443,"shininess":0,"transparent":true,"depthFunc":3,"depthTest":true,"depthWrite":true, 
+    "flatShading": true, "clipShadows": true,
+    "opacity": 1, "side": 2
+  },
+  "renderOrder": 1
+}

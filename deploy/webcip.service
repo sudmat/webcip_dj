@@ -1,0 +1,73 @@
+[Unit]
+Description=WebCIP backend (FastAPI + pv_core + the cip/* docker tool pipeline)
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=exec
+# Runs as the ordinary login account rather than a dedicated service user: this is a
+# single-operator research box, and a separate account buys isolation nobody is maintaining.
+# The trade-off is real though — the web service and your interactive SSH access share one
+# identity, so a compromise of the app gets your keys, and the docker group makes that
+# root-equivalent. See "Not done yet" in SERVER_SETUP.md.
+User=ec2-user
+Group=ec2-user
+# pv_core/tools/docker_runner.py shells out to the docker CLI. On an Amazon Linux AMI ec2-user
+# is already in this group; naming it here keeps the requirement visible.
+SupplementaryGroups=docker
+WorkingDirectory=/opt/webcip
+
+Environment=WEBCIP_SRC=/opt/pypv
+Environment=WEBCIP_UPLOAD_DIR=/var/lib/webcip/uploads
+# Where finished work lives. ':'-separated; scanned for case folders, plans and .cdb
+# files, which the load controls then offer as a list (GET /api/openable).
+Environment=WEBCIP_DATA_ROOT=/var/lib/webcip/data
+# projects.cip imports PySide6 at module level. No QApplication is ever constructed, but the Qt
+# platform plugin still has to resolve — offscreen is the one that needs no display.
+Environment=QT_QPA_PLATFORM=offscreen
+Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/home/ec2-user
+
+# Pre-fill the load boxes (optional; relative paths resolve under WEBCIP_DATA_ROOT).
+#Environment=WEBCIP_DEFAULT_IMAGE=sample_pre.nii
+#Environment=WEBCIP_DEFAULT_CDB=sample.cdb
+
+# --workers 1 IS MANDATORY. backend/store.py::_STORE, backend/workflow.py::_SESSION and
+# backend/jobs.py::_JOBS are module-level singletons holding the decoded CTs, the one workflow
+# session and the one job slot. A second worker would give each request a coin-flip between two
+# disjoint workspaces. Do not put this behind gunicorn or scale it horizontally.
+#
+# --root-path does not affect routing (Apache strips the prefix before we see the request); it
+# only makes /docs build a correct openapi.json URL.
+ExecStart=/opt/webcip/.venv/bin/uvicorn backend.app:app \
+    --host 127.0.0.1 --port 8011 --workers 1 \
+    --root-path /webcip \
+    --proxy-headers --forwarded-allow-ips 127.0.0.1 \
+    --timeout-keep-alive 65
+
+Restart=on-failure
+RestartSec=5
+# Importing vtk + PySide6 + SimpleITK takes tens of seconds on a cold page cache.
+TimeoutStartSec=120
+TimeoutStopSec=30
+KillSignal=SIGINT
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=webcip
+
+NoNewPrivileges=yes
+ProtectSystem=full
+# NOT ProtectHome=yes: the service runs as ec2-user, whose home IS under /home. Hiding it would
+# cut the process off from its own $HOME — the Qt and fontconfig caches PySide6 writes there.
+ProtectHome=no
+# PrivateTmp=no is deliberate. If <pypv>/jobs were ever unwritable, pv_core.tools.jobs falls back
+# to tempfile.gettempdir() — and `docker run --mount source=<path>` is resolved by the DAEMON
+# against the host's /tmp, which a private one would not be. The tools would then bind an empty
+# directory and fail unreadably. (Starlette also spools uploads to /tmp; leave it >= 1 GB free.)
+PrivateTmp=no
+ReadWritePaths=/opt/pypv/jobs /var/lib/webcip /home/ec2-user
+
+[Install]
+WantedBy=multi-user.target

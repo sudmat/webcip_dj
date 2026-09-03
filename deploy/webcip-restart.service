@@ -1,0 +1,6 @@
+[Unit]
+Description=Restart WebCIP
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl try-restart webcip.service
