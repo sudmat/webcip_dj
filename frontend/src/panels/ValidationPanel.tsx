@@ -57,6 +57,9 @@ export function ValidationPanel({
   const [elIdx, setElIdx] = useState(1);
   const [labels, setLabels] = useState<number[]>([]);
   const firstPick = useRef(true); // not rendered: only decides whether a pick also zooms
+  // Done leaves the views where the review put them; Cancel puts the framing back. Read by the
+  // unmount cleanup, which is the single exit path for both buttons.
+  const keepView = useRef(false);
 
   // Derived, not stored: it gates and drives step 1's sliders, and recomputing only when the
   // structure list itself changes keeps a full vertex pass off every re-render (the controller
@@ -115,7 +118,7 @@ export function ValidationPanel({
   // setup below into it would make the second snapshot capture step 1 instead of the real state.
   useEffect(() => {
     controller.enterScope('validate');
-    return () => controller.exitScope();
+    return () => controller.exitScope(keepView.current);
   }, [controller]);
 
   // A clean review scene, then step 1's framing: single preop on the atlas axes, framed on the
@@ -233,10 +236,18 @@ export function ValidationPanel({
       ))}
 
       <div style={{ display: 'flex', gap: 6 }}>
-        <button style={{ flex: 1 }} disabled={!doneEnabled(checked)} onClick={onExit}>
+        <button
+          style={{ flex: 1 }}
+          disabled={!doneEnabled(checked)}
+          title="Finish the review and keep these views"
+          onClick={() => {
+            keepView.current = true;
+            onExit();
+          }}
+        >
           Done
         </button>
-        <button style={{ flex: 1 }} onClick={onExit}>
+        <button style={{ flex: 1 }} title="Leave the review and put the views back" onClick={onExit}>
           Cancel
         </button>
       </div>

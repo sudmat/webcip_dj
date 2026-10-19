@@ -381,6 +381,132 @@ Files: `backend/routes/plan.py`, `backend/plan_mesh.py`, `core/planObjects.ts` (
 
 ---
 
+## Validation flow + takeover seam — implemented
+
+**Save file ▸ Validate plan …** in `/viewer`, and automatically after a clean **Auto process** run.
+Three human-check steps that must each be marked *Checked* in order before **Done** unlocks; each
+one reframes the views on what it is asking about. Ported from `desktop/validation_panel.py`.
+Verified end-to-end through CDP against `temp/0000000102_POSTOP_RIGHT_v0.cdb`.
+
+| Step | Scene | Auto-fit |
+|---|---|---|
+| 1. Structure segmentation | preop on top (bottom cleared), atlas/world axes, structures visible | 2D only: `zoom = max(1, fovMm / (1.4 × extent))` on the all-structures bbox, crosshair to its centre, plus three sliders sweeping the crosshair along each bbox axis |
+| 2. Postop – preop registration | all structures hidden; one button flips the top slot | none — the flip must not move anything |
+| 3. Electrodes | postop on top, leads on, dock open on the **MIP** tab | slider over the contacts; the **first** pick frames at zoom 20, later picks only re-centre |
+
+The fit math is pure and tested in `core/viewFit.ts`: `structuresWorldBbox` (all meshes *including
+hidden* — the box frames the segmentation, not the checklist), `fitZoom`, `boxAxisPoint`, and
+`parallelScaleFor` = `fovMm / zoom / 2`, which is what makes the 3D pane show the same physical
+extent as a 2D pane — VTK's parallel scale is the viewport *half*-height. That only works in
+parallel projection, so `projection3d` now defaults to `'parallel'` as the desktop does
+(`four_up_viewer.py`: `_projection3d = "parallel"`). The Display workspace inherits that change.
+
+- **`render/viewScope.ts` is the reusable seam**, not validation-specific. Three more takeover
+  panels are queued (adjust-seg, pick-seeds, erase-implant review) and all four need the same
+  snapshot/takeover/restore. The rule is **snapshot broadly, mutate normally, restore wholesale**:
+  the scope captures the union of what any such panel touches (slots, orientation, zoom, fovMm,
+  crosshair, per-pane pan, the full 3D camera, `mode3d`/`projection3d`/`meshMode2d`/`tool`, the five
+  Planning flags, per-structure visibility), so a panel calls ordinary controller setters and
+  **declares and saves nothing**. The desktop's three exclusive panels each roll a *different*
+  partial `_saved` tuple, and all three lose the pane pan and the 3D camera — this restores both.
+- **Two suppressions live on the scope**, because they are behavioural rather than state:
+  `freezeFraming` stops `loadCdb` re-framing (it runs on *every* SSE revision of a run and would
+  erase step 1's fit), and `reapplyOverrides` re-hides structures after a rebuild, since
+  `makePlanStructure` re-derives `visible` from the plan object. `View3D.autoFrame` gates the three
+  `resetCamera` calls for the same reason — `setStructures` re-frames on every structure-list change.
+- **Save file is NOT a numbered step.** The desktop keeps it as a plain button *below* the step
+  scroll area (`workflow.py`: "workspace save lives here, not in a step"), so the column is now a
+  fixed banner, a scrolling body, and a **pinned** Save-file footer that never scrolls out of reach.
+  Numbered steps stop at 6.
+- **Done keeps the framing, Cancel restores it** (`exit(keepView)`). Done restores the *scene* —
+  slots, structure visibility, orientation, modes, panel toggles — but leaves zoom, crosshair, pan
+  and the 3D camera where the review put them, so you stay looking at what you just judged. The
+  desktop does the same on Done, though by accident: its saved tuple simply has no 3D camera in it.
+- **Hold heartbeat.** A review is minutes of zero HTTP traffic and the workspace hold lapses after
+  `HOLD_IDLE_SECONDS = 180`, so the scope pings `GET /workflow` (which calls `sess.touch`) every
+  60 s while a panel is open. In the seam, so all four panels get it.
+
+### Three bugs this surfaced (all latent, all in shared code)
+
+1. **A `.cdb` carries no image roles at all.** `projects/cip/cdb_scene.py` identifies the pair by
+   *slot* — its own field comments read `top_id # postop`, `bottom_id # preop` — so role-based
+   lookup silently picked the postop as the preop. `core/roles.ts` prefers roles and falls back to
+   the slots, and the panel resolves the pair **once on mount**, because step 1's `selectTop` clears
+   the bottom slot and re-deriving later would leave step 2 with nothing to flip to.
+2. **`attach()` never pushed `projection3d` to the camera.** The controller field and the vtk camera
+   agreed only by accident (both perspective). Exposed immediately by changing the default.
+3. **`View3D.loadSurface` re-framed the camera after a plan had restored `ui.camera3d`.** It is
+   `async`, so it lands after `applyPlanUi` and discarded the saved camera. Now gated by `autoFrame`.
+
+**Not ported**: the `validated` stamp. The desktop's Done writes
+`session.state['validated'] = {at, by, sig}` with `sig` from `db_plan.validation_signature`, so it
+self-invalidates on a real edit and gates the DB order's READY flip. The web has no plan-write path
+and no authenticated identity for `by`, so a stamp here would certify nothing while implying it does.
+
+Files: `render/viewScope.ts`, `panels/ValidationPanel.tsx`, `core/viewFit.ts`, `core/roles.ts`,
+`core/validationSteps.ts` (+ `core/__tests__/viewFit.test.ts`,
+`render/__tests__/viewScope.test.ts` — 35 of the suite's 143 tests),
+`render/viewerController.ts`, `render/View3D.ts`, `panels/WorkflowColumn.tsx`,
+`panels/ElectrodeDock.tsx`, `workspaces/ProcessingApp.tsx`.
+
+---
+
+## Theme layer + type scale — implemented
+
+**Four dark palettes**, switchable from the top nav and persisted in `localStorage`: Charcoal
+(default), Carbon (near-black, highest contrast), Midnight (cool blue-black), Mocha (warm, amber
+accent). Selected by `data-theme` on `<html>`; `main.tsx` applies the stored choice before first
+render so there is no flash.
+
+The palettes moved out of `index.css` into `theme.css`, where a theme is a complete set of tokens
+rather than a handful of overrides — `--bg`, `--panel`, `--panel-alt`, `--panel-border`, `--sunken`,
+`--text`, `--muted`, `--faint`, `--accent`, `--accent-text`, `--control-bg`, `--control-hover`,
+`--ok`/`--warn`/`--err`/`--info`, `--warn-bg`/`--warn-border`.
+
+- **`--muted` was the actual problem.** It drives ~45 label sites (panel headers, field names, dock
+  titles) and was `#9a9a9a` on `#2a2a2a` — 5.1:1, which at 13px reads as noise. Every theme now puts
+  it at **8.2–12.1:1** against its own panel.
+- **One knob for type size.** `--fs-base` (13.5px) with the other steps as `calc()` offsets, so the
+  whole UI moves a size together. The ~49 hardcoded `fontSize:` values in components became
+  `var(--fs-2xs … --fs-lg)`, and the fixed label columns became `em` so they track the knob —
+  otherwise larger text collides with the controls beside it.
+- **The chrome greys and status colours are tokens now** (`#333`, `#222`, `#3d3d3d`, `#2f2f2f` …
+  and `#e06c6c`/`#4caf50`/`#ffb454`/`#5a9bf0`). Deliberately left alone: the render canvases stay
+  `#000`, and the PDF/curves/insertions report surfaces keep their print styling.
+- The accent darkened to `#3a72e0` so white-on-accent clears 4.5:1, and `--accent-text` exists so
+  text on an accent fill stays readable when the accent is amber (Mocha).
+
+Files: `frontend/src/theme.css`, `core/theme.ts`, `index.css`, `App.tsx`, `panels/ui.tsx`.
+
+---
+
+## 2D electrode markers — matched to the desktop
+
+The 2D marker layer was an approximation of `reslice_view.py::_update_markers`; it is now a port.
+Three differences, all visible:
+
+- **Plus-signs, not filled dots** — `MARKER_ARM_PX = 5`, in *screen* pixels, so the glyphs keep
+  their size through a zoom (the desktop scales them by mm-per-pixel for the same reason).
+- **The connecting line is dotted, not solid** — `(DOT_ON_PX, DOT_PERIOD_PX) = (1, 4)`. The desktop
+  dots rather than dashes because dashes read badly through the plus-signs. Each segment is its own
+  path so the dash phase restarts at every contact and the dots land *on* the contacts.
+- **Point projection now actually gates the layer**, which is its whole purpose. Off: only contacts
+  within half a slice step of the plane draw, so a contact appears as you scroll onto it, and there
+  is **no connecting line at all** (IDL draws none with projection off). On: every contact projects
+  onto every slice and the line joins them. The flag existed on the controller and gated the 2D
+  trajectory line, but never reached the panes — `setMarkers(markers, pointProjection)` now takes it.
+
+Colour corrected to the desktop's pure `(1, 1, 0)` in both 2D and 3D, the 3D connect line to width
+1.5 (`_marker_connect_actor`), and the labels to white-on-dark-halo at 12px (`_set_marker_texts`).
+Kept deliberately: the ring on the selected contact — the desktop rings it in its Electrode panel
+rather than here, but the web's electrode table both centres *and* selects, and the ring is what
+answers "which row am I looking at" in the panes.
+
+Files: `render/ReslicePane.ts`, `render/trajectory3d.ts`, `render/View3D.ts`,
+`render/viewerController.ts`.
+
+---
+
 ## Reference code
 
 ### The old v2 site (what we're replicating — display page only)

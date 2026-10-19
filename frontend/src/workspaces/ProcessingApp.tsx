@@ -34,6 +34,7 @@ import { Image } from '../core/image';
 import { makePlanStructure, makeTrajMesh, type Structure } from '../core/structure';
 import { planStructures, planTrajectories } from '../core/planObjects';
 import { ElectrodeDock, type Tab as ElectrodeTab } from '../panels/ElectrodeDock';
+import { MenuButton } from '../panels/MenuButton';
 import { AutoProcessDialog } from '../panels/AutoProcessDialog';
 import { ValidationPanel } from '../panels/ValidationPanel';
 import { FourUp } from '../render/FourUp';
@@ -648,34 +649,36 @@ export function ProcessingApp() {
   };
 
   // --- step 7: save file (_SaveStep) ---
-  // Only the review action is live; the desktop's save/submit need a plan-write path the web
-  // does not have yet. `gate: 'load'` keeps the step lit whenever a workspace exists, as the
-  // desktop's Save-file menu is.
-  // Read from the SCENE, not from `workflow`: a .cdb or plan opened for review is loaded
-  // without creating a backend session, and it is exactly the case worth validating.
+  // Save file is NOT a numbered step: the desktop keeps it as a plain button at the FOOT of the
+  // column, below the step list and the object lists (workflow.py — "the Save File menu button
+  // (workspace save lives here, not in a step)"). Only the review action is live; saving and DB
+  // submission need a plan-write path the web does not have.
+  //
+  // hasImages reads the SCENE, not `workflow`: a .cdb or plan opened for review loads without
+  // creating a backend session, and that is exactly the case worth validating.
   const hasImages = controller.scene.images.length > 0;
-  const step7: StepDef = {
-    key: 'save',
-    gate: 'load',
-    title: 'Save file',
-    items: [
-      {
-        label: 'Validate plan …',
-        disabled: !hasImages,
-        title: hasImages
-          ? 'Review the segmentation, the registration and the electrodes'
-          : 'Load a preop CT first',
-        onClick: () => setTakeover('validate'),
-      },
-      { label: 'Save plan …', separatorBefore: true, disabled: true, title: 'Plan saving — not implemented yet' },
-      { label: 'Submit plan …', disabled: true, title: 'DB submission — not implemented yet' },
-    ],
-  };
+  const saveFile = (
+    <MenuButton
+      label="Save file"
+      items={[
+        {
+          label: 'Validate plan …',
+          disabled: !hasImages,
+          title: hasImages
+            ? 'Review the segmentation, the registration and the electrodes'
+            : 'Load a preop CT first',
+          onClick: () => setTakeover('validate'),
+        },
+        { label: 'Save plan …', separatorBefore: true, disabled: true, title: 'Plan saving — not implemented yet' },
+        { label: 'Submit plan …', disabled: true, title: 'DB submission — not implemented yet' },
+      ]}
+    />
+  );
 
   const stepColumn = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 }}>
       <WorkflowSteps
-        steps={[step1, step2, step3, step4, step5, step6, step7]}
+        steps={[step1, step2, step3, step4, step5, step6]}
         workflow={workflow}
         running={runningStep}
         failed={failedStep}
@@ -761,6 +764,7 @@ export function ProcessingApp() {
             workflow={workflow}
             steps={stepColumn}
             onTakeOver={() => void takeOver()}
+            footer={saveFile}
             takeover={
               takeover === 'validate' ? (
                 <ValidationPanel controller={controller} onExit={() => setTakeover(null)} />

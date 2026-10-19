@@ -278,11 +278,14 @@ export class ViewerController {
     return scope;
   }
 
-  exitScope(): void {
+  /** Give the views back. `keepView` leaves the framing the panel established (zoom, crosshair,
+   *  pan, 3D camera) and restores only the scene — what a panel finished normally wants, so the
+   *  reviewer stays looking at what they were just judging. */
+  exitScope(keepView = false): void {
     const scope = this.scope;
     if (!scope) return;
     this.scope = null; // cleared FIRST, so exit()'s own setters are not treated as panel edits
-    scope.exit();
+    scope.exit(keepView);
     this.emit();
   }
 

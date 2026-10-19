@@ -127,8 +127,18 @@ export class ViewScope {
     if (this.onHeartbeat) this.heartbeat = setInterval(this.onHeartbeat, HEARTBEAT_MS);
   }
 
-  /** Put everything back. The order is load-bearing and follows ValidationPanel._restore. */
-  exit(): void {
+  /** Put everything back. The order is load-bearing and follows ValidationPanel._restore.
+   *
+   *  `keepView` restores the SCENE (slots, structure visibility, modes, panel toggles) but
+   *  leaves the FRAMING where the panel put it — zoom, crosshair, pan and the 3D camera. That is
+   *  what a panel finished normally wants: the reviewer just spent three steps getting the views
+   *  onto the anatomy, and snapping back to the wide load-time framing throws that away.
+   *
+   *  It is also what the desktop does on Done, though by accident rather than design: its saved
+   *  tuple simply has no 3D camera in it, and set_top_image skips _render_top (and so
+   *  ResetCamera) when the top slot has not actually changed. Backing out — Cancel — restores
+   *  the framing too, which is the difference the flag exists to express. */
+  exit(keepView = false): void {
     if (this.heartbeat !== null) clearInterval(this.heartbeat);
     this.heartbeat = null;
     const s = this.snap;
@@ -150,22 +160,27 @@ export class ViewScope {
     this.c.setMeshMode2d(s.meshMode2d);
     this.c.setTool(s.tool);
 
-    this.c.scene.view.zoom = s.zoom;
-    this.c.scene.view.fovMm = s.fovMm;
+    // The orientation is scene state, not framing: it goes back either way, as the desktop's
+    // _restore does (view.orientation + display_panel.reapply_orientation).
     this.c.setOrientationMode(s.orientationMode); // re-derives the matrix from the restored top
-    this.c.moveCrosshairTo(s.crosshair);
 
-    // AFTER moveCrosshairTo: that recentres every pane on the crosshair, which would overwrite
-    // the pan we are restoring. (The desktop drops the pan here — this is the one place the web
-    // is deliberately better than its model.)
-    for (const p of this.c.panes) {
-      const centre = s.paneCenters.get(p.view);
-      if (centre) p.center = [...centre] as Vec3;
+    if (!keepView) {
+      this.c.scene.view.zoom = s.zoom;
+      this.c.scene.view.fovMm = s.fovMm;
+      this.c.moveCrosshairTo(s.crosshair);
+
+      // AFTER moveCrosshairTo: that recentres every pane on the crosshair, which would overwrite
+      // the pan we are restoring. (The desktop drops the pan here — this is the one place the web
+      // is deliberately better than its model.)
+      for (const p of this.c.panes) {
+        const centre = s.paneCenters.get(p.view);
+        if (centre) p.center = [...centre] as Vec3;
+      }
     }
 
     if (this.c.view3d) {
       this.c.view3d.autoFrame = true;
-      if (s.camera3d) this.c.view3d.setCameraState(s.camera3d);
+      if (!keepView && s.camera3d) this.c.view3d.setCameraState(s.camera3d);
     }
     this.c.refresh();
   }

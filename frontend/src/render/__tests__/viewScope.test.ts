@@ -145,6 +145,36 @@ describe('ViewScope', () => {
     expect(c.panes[1].center).toEqual([4, 5, 6]); // its own pan, not the crosshair
   });
 
+  // A panel finished normally (Done) keeps the framing the review established — the reviewer
+  // spent three steps getting the views onto the anatomy. Only the SCENE goes back.
+  it('keepView restores the scene but leaves the framing alone', () => {
+    const c = fakeController([struct('a', true)]);
+    const scope = new ViewScope('validate', c as unknown as ViewerController);
+    scope.enter();
+
+    c.selectTop(c.scene.images[1]);
+    c.updateStructure('a', { visible: false });
+    c.setLeadsVisible(false);
+    c.scene.view.zoom = 20;
+    c.moveCrosshairTo([9, 9, 9]);
+    c.camera.parallelScale = 6.4;
+
+    scope.exit(true);
+
+    // scene: back
+    expect(c.scene.top?.id).toBe('top');
+    expect(c.scene.bottom?.id).toBe('bottom');
+    expect(c.structures[0].visible).toBe(true);
+    expect(c.leadsVisible).toBe(true);
+    expect(c.orientationMode).toBe('primary'); // the frame is scene state, not framing
+    // framing: kept
+    expect(c.scene.view.zoom).toBe(20);
+    expect(c.scene.view.crosshair).toEqual([9, 9, 9]);
+    expect(c.panes[0].center).toEqual([9, 9, 9]);
+    expect(c.camera.parallelScale).toBe(6.4);
+    expect(c.view3d.autoFrame).toBe(true); // still re-armed, either way
+  });
+
   it('hands the 3D camera back and re-arms auto-framing', () => {
     const c = fakeController([]);
     const scope = new ViewScope('validate', c as unknown as ViewerController);
