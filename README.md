@@ -7,7 +7,8 @@ Web port of the CIP desktop planning app (PySide6 + VTK + SimpleITK). It display
 **Architecture.** A thin **FastAPI backend** reuses the desktop's UI-free `pv_core`
 package as a *one-time file decoder* (DICOM/NIfTI/raw → pixel buffer + geometry). The
 **browser** does all rendering/interaction with **VTK.js**; the small coordinate math is
-ported to TypeScript. The backend never renders or interpolates.
+ported to TypeScript. The backend never renders or interpolates. Full write-up:
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
 ```
 frontend/   Vite + React + TS + VTK.js   (all rendering, client-side)
